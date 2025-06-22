@@ -47,3 +47,10 @@ func (c DBConfig) DSN() string {
 		c.Host, c.Port, c.User, c.Password, c.Name, c.SSLMode,
 	)
 }
+
+func (c *ServerConfig) GetPort() string {
+	if c.Port == "" {
+		return "8080"
+	}
+	return c.Port
+}

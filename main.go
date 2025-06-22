@@ -36,11 +36,7 @@ func main() {
 	r.Post("/user/{userId}/transaction", h.HandleTransaction)
 	r.Get("/user/{userId}/balance", h.HandleGetBalance)
 
-	port := cfg.Server.Port
-	if port == "" {
-		port = "8080"
-	}
-
+	port := cfg.Server.GetPort()
 	log.Println("Starting server on port", port)
 	if err := http.ListenAndServe(":"+port, r); err != nil {
 		log.Fatal(err)
