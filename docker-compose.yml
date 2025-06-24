@@ -15,11 +15,26 @@ services:
       timeout: 5s
       retries: 5
       start_period: 15s
+    # PostgreSQL connection tuning
+    command: >
+      postgres
+      -c max_connections=200
+      -c shared_buffers=256MB
+      -c effective_cache_size=1GB
+      -c maintenance_work_mem=64MB
+      -c checkpoint_completion_target=0.9
+      -c random_page_cost=1.1
 
   app:
     build: .
     ports:
       - "8081:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 2s
+      retries: 3
+      start_period: 5s
     depends_on:
       db:
         condition: service_healthy
@@ -31,4 +46,19 @@ services:
       DB_NAME: balance
       DB_SSLMODE: disable
       SERVER_PORT: "8080"
+
+      # DB connection pool configuration
+      DB_MAX_OPEN_CONNS: "25"
+      DB_MAX_IDLE_CONNS: "10"
+      DB_CONN_MAX_LIFETIME: "30s"
+      DB_CONN_MAX_IDLE_TIME: "10s"
+
     restart: on-failure
+    cpus: 20
+    mem_limit: 5g
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    sysctls:
+      - net.core.somaxconn=65535
