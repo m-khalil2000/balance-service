@@ -9,6 +9,7 @@ import (
 	"github.com/shopspring/decimal"
 
 	"balance-service/internal/storage"
+	"balance-service/pkg/models"
 )
 
 type Handler struct {
@@ -17,12 +18,6 @@ type Handler struct {
 
 func NewHandler(s storage.Storage) *Handler {
 	return &Handler{store: s}
-}
-
-type transactionPayload struct {
-	State         string `json:"state"`
-	Amount        string `json:"amount"`
-	TransactionID string `json:"transactionId"`
 }
 
 // HandleTransaction processes a transaction for a user.
@@ -40,7 +35,7 @@ func (h *Handler) HandleTransaction(c *gin.Context) {
 		return
 	}
 
-	var payload transactionPayload
+	var payload models.TransactionPayload
 	if err := c.ShouldBindJSON(&payload); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON payload"})
 		return
@@ -62,7 +57,7 @@ func (h *Handler) HandleTransaction(c *gin.Context) {
 		return
 	}
 
-	err = h.store.ProcessTransaction(c.Request.Context(), userID, payload.TransactionID, payload.State, sourceType, amount)
+	oldBalance, newBalance, err := h.store.ProcessTransaction(c.Request.Context(), userID, payload.TransactionID, payload.State, sourceType, amount)
 	if err != nil {
 		status := http.StatusBadRequest
 		if err.Error() == "transaction already processed" {
@@ -71,6 +66,11 @@ func (h *Handler) HandleTransaction(c *gin.Context) {
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
+	resp := models.TransactionResponse{
+		Message:    "transaction processed successfully",
+		OldBalance: oldBalance.StringFixed(2),
+		NewBalance: newBalance.StringFixed(2),
+	}
+	c.JSON(http.StatusOK, resp)
 
-	c.JSON(http.StatusOK, gin.H{"message": "transaction processed successfully"})
 }
