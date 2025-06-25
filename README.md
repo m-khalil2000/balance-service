@@ -81,10 +81,10 @@ Submit a transaction (`win` or `lose`).
 
 #### Required Headers
 
-| Header       | Example            |
-| ------------ | ------------------ |
-| Source-Type  | `game`             |
-| Content-Type | `application/json` |
+| Header       | Example                 |
+| ------------ | ----------------------- |
+| Source-Type  | `game, server, payment` |
+| Content-Type | `application/json`      |
 
 #### Request Body
 
