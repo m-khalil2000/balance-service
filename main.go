@@ -1,44 +1,64 @@
 package main
 
 import (
-	"database/sql"
-	"log"
-	"net/http"
-
-	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-	_ "github.com/lib/pq"
-
 	"balance-service/config"
 	"balance-service/internal/handlers"
 	"balance-service/internal/storage"
+	"balance-service/server"
+	"log"
+	"net/http"
+	"os"
+	"runtime"
+	"runtime/debug"
+	"time"
+
+	_ "github.com/lib/pq"
 )
 
 func main() {
+
+	log.Printf("GOMAXPROCS set to: %d", runtime.GOMAXPROCS(0))
+
+	// Global panic recovery for main()
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("UNCAUGHT PANIC in main: %v\n%s", r, debug.Stack())
+			os.Exit(1)
+		}
+	}()
+
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
 	cfg := config.LoadFromEnv()
 
-	// Initialize database connection
-	db, err := sql.Open("postgres", cfg.DB.DSN())
-	if err != nil {
-		log.Fatalf("failed to connect to db: %v", err)
-	}
-	if err := db.Ping(); err != nil {
-		log.Fatalf("failed to ping db: %v", err)
-	}
+	// Initialize DB connection
+	dbConn := server.InitDatabase(cfg)
+	defer func() {
+		if err := dbConn.Close(); err != nil {
+			log.Fatalf("Failed to connect to DB: %v", err)
+		}
+	}()
 
-	// Ensure the database is ready
-	repo := storage.NewPostgresStorage(db)
+	// Log connection pool configuration
+	log.Printf("Database connected")
+
+	repo := storage.NewPostgresStorage(dbConn)
 	h := handlers.NewHandler(repo)
 
-	r := chi.NewRouter()
-	r.Use(middleware.Logger)
+	r := server.SetupRouter(h)
 
-	r.Post("/user/{userId}/transaction", h.HandleTransaction)
-	r.Get("/user/{userId}/balance", h.HandleGetBalance)
-
+	// Start server
 	port := cfg.Server.GetPort()
-	log.Println("Starting server on port", port)
-	if err := http.ListenAndServe(":"+port, r); err != nil {
-		log.Fatal(err)
+	log.Printf("Starting server on port %s\n", port)
+
+	srv := &http.Server{
+		Addr:           ":" + cfg.Server.GetPort(),
+		Handler:        r,
+		ReadTimeout:    10 * time.Second,
+		WriteTimeout:   10 * time.Second,
+		IdleTimeout:    90 * time.Second,
+		MaxHeaderBytes: 1 << 20, // 1 MB
 	}
+
+	log.Fatal(srv.ListenAndServe())
 }
