@@ -29,7 +29,9 @@ func (p *PostgresStorage) ProcessTransaction(ctx context.Context, userID uint64,
 		return fmt.Errorf("invalid transactionId: %w", err)
 	}
 
-	tx, err := p.db.BeginTx(ctx, nil)
+	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{
+		Isolation: sql.LevelReadCommitted,
+	})
 	if err != nil {
 		return err
 	}
@@ -41,7 +43,11 @@ func (p *PostgresStorage) ProcessTransaction(ctx context.Context, userID uint64,
 		return err
 	}
 	if exists {
-		return nil // Idempotent: already processed
+		return fmt.Errorf("transaction already processed") // Return specific error string
+	}
+
+	if state != "win" && state != "lose" {
+		return fmt.Errorf("invalid state")
 	}
 
 	var currentBalance decimal.Decimal
@@ -56,24 +62,22 @@ func (p *PostgresStorage) ProcessTransaction(ctx context.Context, userID uint64,
 	newBalance := currentBalance
 	if state == "win" {
 		newBalance = newBalance.Add(amount)
-	} else if state == "lose" {
+	} else {
 		newBalance = newBalance.Sub(amount)
 		if newBalance.IsNegative() {
 			return fmt.Errorf("insufficient balance")
 		}
-	} else {
-		return fmt.Errorf("invalid state")
-	}
-
-	_, err = tx.ExecContext(ctx, `UPDATE users SET balance = $1 WHERE id = $2`, newBalance, userID)
-	if err != nil {
-		return err
 	}
 
 	_, err = tx.ExecContext(ctx, `
+		WITH updated_user AS (
+			UPDATE users SET balance = $1 WHERE id = $2 RETURNING id
+		)
 		INSERT INTO transactions (id, user_id, amount, state, source_type)
-		VALUES ($1, $2, $3, $4, $5)
-	`, txUUID, userID, amount, state, source)
+		SELECT $3, $2, $4, $5, $6
+		FROM updated_user
+	`, newBalance, userID, txUUID, amount, state, source)
+
 	if err != nil {
 		return err
 	}
@@ -83,8 +87,12 @@ func (p *PostgresStorage) ProcessTransaction(ctx context.Context, userID uint64,
 
 func (p *PostgresStorage) GetBalance(ctx context.Context, userID uint64) (decimal.Decimal, error) {
 	var balance decimal.Decimal
+	// Use context timeout for the query
 	err := p.db.QueryRowContext(ctx, `SELECT balance FROM users WHERE id = $1`, userID).Scan(&balance)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return decimal.Zero, fmt.Errorf("user not found")
+		}
 		return decimal.Zero, err
 	}
 	return balance, nil
