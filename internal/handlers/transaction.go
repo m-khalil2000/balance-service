@@ -1,12 +1,10 @@
 package handlers
 
 import (
-	"encoding/json"
-	"io"
 	"net/http"
 	"strconv"
 
-	"github.com/go-chi/chi/v5"
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
@@ -27,55 +25,52 @@ type transactionPayload struct {
 	TransactionID string `json:"transactionId"`
 }
 
-func (h *Handler) HandleTransaction(w http.ResponseWriter, r *http.Request) {
-	userIDStr := chi.URLParam(r, "userId")
+// HandleTransaction processes a transaction for a user.
+func (h *Handler) HandleTransaction(c *gin.Context) {
+	userIDStr := c.Param("userId")
 	userID, err := strconv.ParseUint(userIDStr, 10, 64)
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "invalid userId")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid userId"})
 		return
 	}
 
-	sourceType := r.Header.Get("Source-Type")
+	sourceType := c.GetHeader("Source-Type")
 	if sourceType == "" {
-		respondWithError(w, http.StatusBadRequest, "missing Source-Type header")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "missing Source-Type header"})
 		return
 	}
-
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "failed to read request body")
-		return
-	}
-	defer r.Body.Close()
 
 	var payload transactionPayload
-	if err := json.Unmarshal(body, &payload); err != nil {
-		respondWithError(w, http.StatusBadRequest, "invalid JSON payload")
+	if err := c.ShouldBindJSON(&payload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid JSON payload"})
 		return
 	}
 
 	if payload.TransactionID == "" || (payload.State != "win" && payload.State != "lose") {
-		respondWithError(w, http.StatusBadRequest, "invalid state or missing transactionId")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid state or missing transactionId"})
 		return
 	}
 
-	// ✅ Validate transactionId is UUID
 	if _, err := uuid.Parse(payload.TransactionID); err != nil {
-		respondWithError(w, http.StatusBadRequest, "invalid transactionId: must be a valid UUID")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid transactionId: must be a valid UUID"})
 		return
 	}
 
 	amount, err := decimal.NewFromString(payload.Amount)
 	if err != nil || amount.LessThan(decimal.Zero) {
-		respondWithError(w, http.StatusBadRequest, "invalid amount")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid amount"})
 		return
 	}
 
-	err = h.store.ProcessTransaction(r.Context(), userID, payload.TransactionID, payload.State, sourceType, amount)
+	err = h.store.ProcessTransaction(c.Request.Context(), userID, payload.TransactionID, payload.State, sourceType, amount)
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, err.Error())
+		status := http.StatusBadRequest
+		if err.Error() == "transaction already processed" {
+			status = http.StatusConflict // 409
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, map[string]string{"message": "transaction processed successfully"})
+	c.JSON(http.StatusOK, gin.H{"message": "transaction processed successfully"})
 }
