@@ -59,7 +59,7 @@ Submit a transaction to increase or decrease the balance of a user.
 
 Each `transactionId` must be unique. Repeating the same `transactionId` will result in a conflict error.
 
-`transactionId` must be a valid UUID string (RFC 4122 format). This enforces idempotency and prevents duplicate transaction processing.
+`transactionId` must be a valid UUID string (RFC 4122 format). This prevents duplicate transaction processing.
 
 ---
 
@@ -93,7 +93,8 @@ Each `transactionId` must be unique. Repeating the same `transactionId` will res
 ```json
 {
   "message": "transaction processed successfully",
-  "balance": "110.15"
+  "oldBalance": "100.00",
+  "newBalance": "110.15"
 }
 ```
 
