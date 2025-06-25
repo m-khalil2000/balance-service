@@ -18,9 +18,9 @@ The following users are available by default (preloaded from the database):
 
 | User ID | Initial Balance |
 | ------- | --------------- |
-| 1       | 100.00          |
-| 2       | 200.00          |
-| 3       | 300.00          |
+| 1       | 10000.00        |
+| 2       | 20000.00        |
+| 3       | 30000.00        |
 
 ---
 

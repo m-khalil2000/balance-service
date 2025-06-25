@@ -29,9 +29,9 @@ The **Balance Service** is a REST API built with Go and PostgreSQL that tracks u
 
 | User ID | Initial Balance |
 | ------- | --------------- |
-| 1       | 100.00          |
-| 2       | 200.00          |
-| 3       | 300.00          |
+| 1       | 10000.00        |
+| 2       | 20000.00        |
+| 3       | 30000.00        |
 
 ---
 
