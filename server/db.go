@@ -22,7 +22,9 @@ func InitDatabase(cfg *models.Config) *sql.DB {
 	var err error
 
 	maxRetries := 30
-	retryInterval := 2 * time.Second
+	initialBackoff := 1 * time.Second
+	maxBackoff := 30 * time.Second
+	backoff := initialBackoff
 
 	for i := 0; i < maxRetries; i++ {
 		db, err = sql.Open("postgres", config.DSN(cfg.DB))
@@ -31,19 +33,23 @@ func InitDatabase(cfg *models.Config) *sql.DB {
 				zap.Int("attempt", i+1),
 				zap.Error(err),
 			)
-			time.Sleep(retryInterval)
+			time.Sleep(backoff)
+			backoff = minDuration(backoff*2, maxBackoff)
 			continue
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		err = db.PingContext(ctx)
 		cancel()
+
+		// Successful connection
 		if err == nil {
 			log.Printf("Connected to DB after %d attempts", i+1)
 			logger.Log.Info("connected to DB",
 				zap.Int("attempt", i+1),
 			)
 
+			// Set connection pool parameters
 			db.SetMaxOpenConns(cfg.DB.MaxOpenConns)
 			db.SetMaxIdleConns(cfg.DB.MaxIdleConns)
 			db.SetConnMaxLifetime(cfg.DB.ConnMaxLifetime)
@@ -51,17 +57,26 @@ func InitDatabase(cfg *models.Config) *sql.DB {
 
 			return db
 		}
+
+		// Log the error and retry
 		logger.Log.Warn("DB ping failed",
 			zap.Int("attempt", i+1),
-			zap.Int("maxRetries", maxRetries),
 			zap.Error(err),
 		)
-		time.Sleep(retryInterval)
 
+		time.Sleep(backoff)
+		backoff = minDuration(backoff*2, maxBackoff)
 	}
 	logger.Log.Fatal("failed to connect to DB after max retries",
 		zap.Int("maxRetries", maxRetries),
 		zap.Error(err),
 	)
 	return nil
+}
+
+func minDuration(a, b time.Duration) time.Duration {
+	if a < b {
+		return a
+	}
+	return b
 }
