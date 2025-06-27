@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -48,7 +49,8 @@ func readEnvOrFile(key string) string {
 			log.Printf("Error reading secret file %s: %v", filePath, err)
 			return ""
 		}
-		return string(data)
+		return strings.TrimSpace(string(data))
 	}
+	log.Printf("Environment variable %s or %s_FILE not set", key, key)
 	return ""
 }

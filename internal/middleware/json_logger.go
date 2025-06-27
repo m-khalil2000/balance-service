@@ -1,52 +1,40 @@
 package middleware
 
 import (
-	"encoding/json"
-	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
-type LogEntry struct {
-	Timestamp string  `json:"timestamp"`
-	Method    string  `json:"method"`
-	Path      string  `json:"path"`
-	Status    int     `json:"status"`
-	Duration  float64 `json:"duration_ms"`
-	Slow      bool    `json:"slow,omitempty"`
-}
-
-// JSONRequestLogger logs request details in JSON format to a file
-func JSONRequestLogger(filePath string, threshold time.Duration) gin.HandlerFunc {
-	// Open file in append mode
-	logFile, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
-	if err != nil {
-		panic("failed to open log file: " + err.Error())
-	}
-
+// ZapLogger logs HTTP requests to Zap.
+func ZapRequestLogger(log *zap.Logger, threshold time.Duration) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
+
 		c.Next()
+
 		duration := time.Since(start)
 
-		entry := LogEntry{
-			Timestamp: time.Now().Format(time.RFC3339),
-			Method:    c.Request.Method,
-			Path:      c.FullPath(),
-			Status:    c.Writer.Status(),
-			Duration:  float64(duration.Milliseconds()),
+		fields := []zap.Field{
+			zap.String("method", c.Request.Method),
+			zap.String("path", c.FullPath()),
+			zap.Int("status", c.Writer.Status()),
+			zap.Float64("duration_ms", float64(duration.Milliseconds())),
 		}
 
-		if entry.Path == "" {
-			entry.Path = c.Request.URL.Path // fallback for 404 or unregistered routes
+		// Fallback for unregistered routes (e.g. 404)
+		if c.FullPath() == "" {
+			fields = append(fields,
+				zap.String("unregistered_path", c.Request.URL.Path),
+			)
 		}
 
 		if duration > threshold {
-			entry.Slow = true
+			fields = append(fields, zap.Bool("slow", true))
+			log.Warn("slow HTTP request", fields...)
+		} else {
+			log.Info("HTTP request", fields...)
 		}
-
-		jsonData, _ := json.Marshal(entry)
-		logFile.Write(append(jsonData, '\n')) // write as one line per request
 	}
 }

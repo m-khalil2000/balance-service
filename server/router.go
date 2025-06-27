@@ -2,23 +2,28 @@
 package server
 
 import (
-	"log"
 	"net/http"
 	"runtime/debug"
 	"time"
 
 	"balance-service/internal/handlers"
+	"balance-service/internal/logger"
 	"balance-service/internal/middleware"
 
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 func SetupRouter(h *handlers.Handler) *gin.Engine {
 	r := gin.New()
 
-	r.Use(middleware.JSONRequestLogger("requests.log", 500*time.Millisecond))
+	r.Use(middleware.ZapRequestLogger(logger.Log, 500*time.Millisecond))
+
 	r.Use(gin.CustomRecovery(func(c *gin.Context, recovered interface{}) {
-		log.Printf("PANIC recovered in handler: %v\n%s", recovered, debug.Stack())
+		logger.Log.Error("PANIC recovered in handler",
+			zap.Any("recovered", recovered),
+			zap.ByteString("stack", debug.Stack()),
+		)
 		c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
 			"error": "internal server error",
 		})

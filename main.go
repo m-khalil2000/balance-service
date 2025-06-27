@@ -3,12 +3,15 @@ package main
 import (
 	"balance-service/config"
 	"balance-service/internal/handlers"
+	"balance-service/internal/logger"
 	"balance-service/internal/storage"
 	"balance-service/server"
 	"log"
+
+	"go.uber.org/zap"
+
 	"net/http"
 	"os"
-	"runtime"
 	"runtime/debug"
 	"time"
 
@@ -17,30 +20,28 @@ import (
 
 func main() {
 
-	log.Printf("GOMAXPROCS set to: %d", runtime.GOMAXPROCS(0))
+	logger.Init()
+	defer logger.Log.Sync()
 
 	// Global panic recovery for main()
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("UNCAUGHT PANIC in main: %v\n%s", r, debug.Stack())
+			logger.Log.Error("UNCAUGHT PANIC in main", zap.Any("error", r), zap.ByteString("stack", debug.Stack()))
 			os.Exit(1)
 		}
 	}()
 
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-
 	cfg := config.LoadFromEnv()
 
 	// Initialize DB connection
-	dbConn := server.InitDatabase(cfg)
+	dbConn, err := server.InitDatabase(cfg)
 	defer func() {
-		if err := dbConn.Close(); err != nil {
-			log.Fatalf("Failed to connect to DB: %v", err)
+		if err = dbConn.Close(); err != nil {
+			logger.Log.Fatal("Failed to close DB connection", zap.Error(err))
 		}
 	}()
 
-	// Log connection pool configuration
-	log.Printf("Database connected")
+	logger.Log.Info("Database connected")
 
 	repo := storage.NewPostgresStorage(dbConn)
 	h := handlers.NewHandler(repo)
@@ -48,11 +49,11 @@ func main() {
 	r := server.SetupRouter(h)
 
 	// Start server
-	port := cfg.Server.GetPort()
+	port := config.GetPort()
 	log.Printf("Starting server on port %s\n", port)
 
 	srv := &http.Server{
-		Addr:           ":" + cfg.Server.GetPort(),
+		Addr:           ":" + config.GetPort(&cfg.Server),
 		Handler:        r,
 		ReadTimeout:    10 * time.Second,
 		WriteTimeout:   10 * time.Second,
