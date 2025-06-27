@@ -60,12 +60,20 @@ func (h *Handler) HandleTransaction(c *gin.Context) {
 	oldBalance, newBalance, err := h.store.ProcessTransaction(c.Request.Context(), userID, payload.TransactionID, payload.State, sourceType, amount)
 	if err != nil {
 		status := http.StatusBadRequest
-		if err.Error() == "transaction already processed" {
-			status = http.StatusConflict // 409
+		switch err.Error() {
+		case "transaction already processed":
+			status = http.StatusConflict
+		case "invalid state":
+			status = http.StatusUnprocessableEntity
+		case "insufficient balance":
+			status = http.StatusUnprocessableEntity
+		case "user not found":
+			status = http.StatusNotFound
 		}
 		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
+
 	resp := models.TransactionResponse{
 		Message:    "transaction processed successfully",
 		OldBalance: oldBalance.StringFixed(2),

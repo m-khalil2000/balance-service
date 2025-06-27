@@ -86,7 +86,6 @@ func (p *PostgresStorage) ProcessTransaction(ctx context.Context, userID uint64,
 		}
 		return decimal.Zero, decimal.Zero, err
 	}
-
 	// calculate new balance
 	newBalance = oldBalance
 	if state == "win" {

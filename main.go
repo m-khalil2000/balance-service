@@ -49,8 +49,8 @@ func main() {
 	r := server.SetupRouter(h)
 
 	// Start server
-	port := config.GetPort()
-	log.Printf("Starting server on port %s\n", port)
+	port := config.GetPort(&cfg.Server)
+	logger.Log.Info("Starting server", zap.String("port", port))
 
 	srv := &http.Server{
 		Addr:           ":" + config.GetPort(&cfg.Server),
